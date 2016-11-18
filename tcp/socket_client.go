@@ -2,6 +2,7 @@ package tcp
 
 import (
 	"bufio"
+	"fmt"
 	"net"
 	"strconv"
 )
@@ -18,11 +19,11 @@ func (server *Server) Read() {
 		line, isPrefix, err := server.read.ReadLine()
 		if err != nil {
 			if err.Error() == "EOF" {
-				log.Println("Connection closed")
+				fmt.Println("Connection closed")
 				server.connection.Close()
 			}
 		} else {
-			log.Println("Line : ", line)
+			fmt.Println("Line : ", line)
 			if isPrefix {
 				server.income = AppendPacketLine(server.income, line)
 			} else {
@@ -35,21 +36,21 @@ func (server *Server) Read() {
 func (server *Server) Write(output []byte) {
 	nn, err := server.write.Write(output)
 	if err != nil {
-		log.Panic(err)
+		fmt.Println(err)
 	} else {
-		log.Println("Write: ", nn)
+		fmt.Println("Write: ", nn)
 	}
 }
 
 func Connect(server string, port int) Server {
 	connection, err := net.Dial("tcp", server+strconv.Itoa(port))
 	if err != nil {
-		log.Panic(err)
+		panic(err)
 	}
 	return Server{
-		write: bufio.NewWriter(connection),
-		read: bufio.NewReader(connection),
-		income: make([]byte, 0),
+		write:      bufio.NewWriter(connection),
+		read:       bufio.NewReader(connection),
+		income:     make([]byte, 0),
 		connection: connection,
 	}
 }

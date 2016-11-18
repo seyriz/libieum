@@ -1,11 +1,5 @@
 package tcp
 
-import (
-	"../helpers"
-)
-
-var log = helpers.GetLogger()
-
 func AppendPacketLine(slice []byte, elements []byte) []byte {
 	n := len(slice)
 	total := len(slice) + len(elements)
