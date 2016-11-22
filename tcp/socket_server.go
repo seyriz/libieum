@@ -8,8 +8,8 @@ import (
 )
 
 var clients map[net.Addr]*Client
-var tcpListener TCPSocketServerListener
-var socketListener net.Listener
+var socketListener TCPSocketListener
+var serverInstance server
 
 type Client struct {
 	income     []byte
@@ -18,80 +18,100 @@ type Client struct {
 	writer     *bufio.Writer
 	connection net.Conn
 	Remote     net.Addr
-	delim      byte
 }
 
-type TCPSocketServerListener interface {
-	OnPacketReceived(client *Client, packet []byte)
-	OnPacketSended(client *Client, packet []byte)
-	OnError(client *Client, err error)
-	OnConnected(client *Client)
-	OnDisconnected(client *Client)
+type server struct {
+	port        int
+	delim       byte
+	async       bool
+	listener    TCPSocketListener
+	controller  *TCPSocketInterface
+	netListener net.Listener
 }
 
-func (client *Client) Read() {
+func (t *server) Start(async bool) error {
+
+}
+
+func (t *server) Stop() error {
+
+}
+
+func (t *server) Send(line []byte) error {
+
+}
+
+func (t *server) GetClientList() map[net.Addr]*Client {
+
+}
+
+func (t *server) BroadCast(line []byte) {
+
+}
+
+func (client *Client) read() {
 	for {
-		line, err := client.reader.ReadBytes(client.delim)
+		line, err := client.reader.ReadBytes(serverInstance.delim)
 		if client == nil {
 			break
 		}
 		if err != nil {
 			if err.Error() == "EOF" {
-				client.Disconnect()
+				client.disconnect()
 				return
 			}
 			if strings.Contains(err.Error(), "use of closed network connection") {
 				return
 			}
-			tcpListener.OnError(client, err)
+			socketListener.OnError(client, err)
 		} else {
-			tcpListener.OnPacketReceived(client, line)
+			socketListener.OnPacketReceived(client, line)
 			client.income = line
 		}
 	}
 }
 
-func (client *Client) Write() {
+func (client *Client) write() {
 	for {
 		if client == nil {
 			break
 		}
 		line := <-client.outgoing
-		tcpListener.OnPacketSended(client, line)
+		socketListener.OnPacketSended(client, line)
 		_, err := client.writer.Write(line)
 		if err != nil {
-			tcpListener.OnError(client, err)
+			socketListener.OnError(client, err)
 		}
 		client.writer.Flush()
 	}
 }
 
-func (client *Client) SendMessage(line []byte) {
+func (client *Client) sendMessage(line []byte) {
 	client.outgoing <- line
 }
 
-func (client *Client) Listen() {
-	go client.Read()
-	go client.Write()
+func (client *Client) listen() {
+	go client.read()
+	go client.write()
 }
 
-func (client *Client) Disconnect() {
-	tcpListener.OnDisconnected(client)
+func (client *Client) disconnect() {
+	socketListener.OnDisconnected(client)
 	client.connection.Close()
 	delete(clients, client.connection.LocalAddr())
 }
 
-func BroadCast(line []byte) {
+func broadCast(line []byte) {
 	for _, v := range clients {
 		v.outgoing <- line
 	}
 }
 
-func GetClientList() map[net.Addr]*Client {
+func getClientList() map[net.Addr]*Client {
 	return clients
 }
 
-func NewClient(connection net.Conn, delim byte) *Client {
+func newClient(connection net.Conn) *Client {
 	// log.Println("Client : ", connection.RemoteAddr())
 	writer := bufio.NewWriter(connection)
 	reader := bufio.NewReader(connection)
@@ -101,42 +121,59 @@ func NewClient(connection net.Conn, delim byte) *Client {
 		reader:     reader,
 		writer:     writer,
 		connection: connection,
-		delim:      delim,
 		Remote:     connection.RemoteAddr(),
 	}
 	return client
 }
 
-func ListenSocket(port int, delim byte, listener TCPSocketServerListener) {
-	clients = make(map[net.Addr]*Client)
-	tcpListener = listener
-	var err error
-	socketListener, err = net.Listen("tcp", ":"+strconv.Itoa(port))
-	if err != nil {
-		tcpListener.OnError(nil, err)
-		return
-	}
-	// log.Println("Listen in : ", port)
-	defer socketListener.Close()
+func listenSocket(svr server) error {
 
 	for {
-		conn, err := socketListener.Accept()
+		conn, err := netListener.Accept()
 		if err != nil {
-			tcpListener.OnError(nil, err)
+			socketListener.OnError(nil, err)
 			break
 		} else {
-			client := NewClient(conn, delim)
-			client.Listen()
-			defer client.Disconnect()
+			client := newClient(conn, delim)
+			client.listen()
+			defer client.disconnect()
 
 			clients[client.connection.LocalAddr()] = client
-			tcpListener.OnConnected(client)
+			socketListener.OnConnected(client)
 		}
+	}
+	return nil
+}
+
+func listenSocketAsync(svr server) error {
+	return nil
+}
+
+func closeSocket() {
+	if netListener != nil {
+		netListener.Close()
 	}
 }
 
-func CloseSocket() {
-	if socketListener != nil {
-		socketListener.Close()
+func Init(portP int, delimP byte, listenerP TCPSocketListener, controllerP *TCPSocketInterface) {
+	controllerP := &TCPSocketInterface{}
+	serverConf := server{
+		port:       portP,
+		delim:      delimP,
+		listener:   listenerP,
+		controller: controllerP,
 	}
+
+	clients = make(map[net.Addr]*Client)
+	socketListener = listener
+	var err error
+	netListener, err = net.Listen("tcp", ":"+strconv.Itoa(port))
+	if err != nil {
+		socketListener.OnError(nil, err)
+		if netListener != nil {
+			netListener.Close()
+		}
+		return err
+	}
+	defer netListener.Close()
 }
